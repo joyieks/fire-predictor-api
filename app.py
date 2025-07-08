@@ -18,8 +18,8 @@ if physical_devices:
 app = Flask(__name__)
 
 # ✅ Load the model only once
-model = load_model("fire_cnn_model.keras")
-CLASSES = ['No Fire', 'Fire']
+model = load_model("fire_mobilenet_model.keras")
+CLASSES = ['Fire', 'No Fire']
 
 @app.route('/')
 def home():
@@ -35,7 +35,7 @@ def predict():
     try:
         # 🔍 Read and preprocess the image
         image = Image.open(io.BytesIO(file.read())).convert('RGB')
-        image = image.resize((128, 128))
+        image = image.resize((224, 224))
         image = img_to_array(image) / 255.0
         image = np.expand_dims(image, axis=0)
 

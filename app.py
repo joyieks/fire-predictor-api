@@ -17,9 +17,43 @@ if physical_devices:
 
 app = Flask(__name__)
 
-# ✅ Load the model only once
-model = load_model("fire_mobilenet_model.keras")
-CLASSES = ['Fire', 'No Fire']
+# ✅ Load models once
+fire_model = load_model("fire_mobilenet_model.keras")
+structure_model = load_model("structure_classifier_model_finetuned.keras")
+smoke_model = load_model("final_smoke_model.keras")
+
+FIRE_CLASSES = ['Fire', 'No Fire']
+STRUCTURE_CLASSES = ['Concrete Building', 'Metal Structure', 'Wooden Houses']
+SMOKE_CLASSES = ['high', 'low', 'medium']  # Based on sorted_val folder structure
+
+# 🚨 Helper: Determine alarm level based on number of structures on fire
+def determine_alarm_level(count):
+    if count is None:
+        return "Unknown - structure count not provided"
+    if count >= 80:
+        return "General Alarm - Major area affected (80 fire trucks)"
+    elif count >= 36:
+        return "Task Force Delta - 36 fire trucks"
+    elif count >= 32:
+        return "Task Force Charlie - 32 fire trucks"
+    elif count >= 28:
+        return "Task Force Bravo - 28 fire trucks"
+    elif count >= 24:
+        return "Task Force Alpha - 24 fire trucks"
+    elif count >= 20:
+        return "Fifth Alarm - 20 fire trucks"
+    elif count >= 16:
+        return "Fourth Alarm - 16 fire trucks"
+    elif count >= 12:
+        return "Third Alarm - 12 fire trucks"
+    elif count >= 8:
+        return "Second Alarm - 8 fire trucks"
+    elif count >= 4:
+        return "First Alarm - 4 fire trucks"
+    elif count >= 1:
+        return "Under Control - Low fire risk"
+    else:
+        return "Fireout - Fire has been neutralized"
 
 @app.route('/')
 def home():
@@ -32,25 +66,49 @@ def predict():
 
     file = request.files['image']
 
+    # Optional input from frontend/Postman
+    num_structures = request.form.get('number_of_structures_on_fire')
     try:
-        # 🔍 Read and preprocess the image
+        num_structures = int(num_structures)
+    except (TypeError, ValueError):
+        num_structures = None
+
+    try:
+        # 🔍 Preprocess image
         image = Image.open(io.BytesIO(file.read())).convert('RGB')
         image = image.resize((224, 224))
         image = img_to_array(image) / 255.0
         image = np.expand_dims(image, axis=0)
 
-        # 🔮 Predict
-        prediction = model.predict(image, verbose=0)[0]
-        class_index = np.argmax(prediction)
-        confidence = float(np.max(prediction)) * 100
+        # 🔥 Fire prediction
+        fire_pred = fire_model.predict(image, verbose=0)[0]
+        fire_class_index = np.argmax(fire_pred)
+        fire_result = FIRE_CLASSES[fire_class_index]
+        fire_confidence = float(np.max(fire_pred)) * 100
 
+        # 🏗️ Structure prediction
+        structure_pred = structure_model.predict(image, verbose=0)[0]
+        structure_result = STRUCTURE_CLASSES[np.argmax(structure_pred)]
+
+        # 🌫️ Smoke intensity prediction
+        smoke_pred = smoke_model.predict(image, verbose=0)[0]
+        smoke_result = SMOKE_CLASSES[np.argmax(smoke_pred)]
+
+        # 🚨 Alarm level
+        alarm_level = determine_alarm_level(num_structures)
+
+        # ✅ Return result
         return jsonify({
-            'prediction': CLASSES[class_index],
-            'confidence': f"{confidence:.2f}%"
+            'prediction': fire_result,
+            'confidence': f"{fire_confidence:.2f}%",
+            'structure': structure_result,
+            'number of structures on fire': num_structures,
+            'alarm level': alarm_level,
+            'smoke intensity': smoke_result,
         })
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    # 👇 For local development; ignored on Render
     app.run(debug=False, host='0.0.0.0', port=10000)

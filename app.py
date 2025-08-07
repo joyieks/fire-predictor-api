@@ -22,7 +22,7 @@ app = Flask(__name__)
 # ✅ Load models once
 fire_model = load_model("fire_mobilenet_model.keras")
 structure_model = load_model("structure_classifier_model_finetuned.keras")
-smoke_model = load_model("final_smoke_model.keras")
+smoke_model = load_model("final_smoke_model.h5")
 
 FIRE_CLASSES = ['Fire', 'No Fire']
 STRUCTURE_CLASSES = ['Concrete Building', 'Metal Structure', 'Wooden Houses']

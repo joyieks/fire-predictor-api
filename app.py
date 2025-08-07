@@ -5,6 +5,8 @@ from tensorflow.keras.preprocessing.image import img_to_array
 import numpy as np
 from PIL import Image
 import io
+import os
+
 
 # 🧠 Prevent TensorFlow from allocating all memory at once
 physical_devices = tf.config.list_physical_devices('GPU')
@@ -111,4 +113,6 @@ def predict():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=10000)
+    port = int(os.environ.get('PORT', 5000))  # Fallback to 5000 for local dev
+    app.run(debug=False, host='0.0.0.0', port=port)
+

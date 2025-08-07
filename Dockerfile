@@ -4,8 +4,11 @@ FROM tensorflow/tensorflow:latest
 # Set working directory
 WORKDIR /app
 
-# Install only the additional packages we need (very fast)
-RUN pip install --no-cache-dir flask pillow
+# Copy requirements before installing
+COPY requirements.txt .
+
+# Install packages
+RUN pip install --no-cache-dir --ignore-installed -r requirements.txt
 
 # Copy application files
 COPY . .

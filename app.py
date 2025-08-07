@@ -7,7 +7,6 @@ from PIL import Image
 import io
 import os
 
-
 # 🧠 Prevent TensorFlow from allocating all memory at once
 physical_devices = tf.config.list_physical_devices('GPU')
 if physical_devices:
@@ -19,14 +18,14 @@ if physical_devices:
 
 app = Flask(__name__)
 
-# ✅ Load models once
+# ✅ Load working models only
 fire_model = load_model("fire_mobilenet_model.keras")
 structure_model = load_model("structure_classifier_model_finetuned.keras")
-smoke_model = load_model("final_smoke_model.keras")
+# smoke_model = load_model("final_smoke_model.keras")  # TEMPORARILY DISABLED
 
 FIRE_CLASSES = ['Fire', 'No Fire']
 STRUCTURE_CLASSES = ['Concrete Building', 'Metal Structure', 'Wooden Houses']
-SMOKE_CLASSES = ['high', 'low', 'medium']  # Based on sorted_val folder structure
+SMOKE_CLASSES = ['high', 'low', 'medium']
 
 # 🚨 Helper: Determine alarm level based on number of structures on fire
 def determine_alarm_level(count):
@@ -59,7 +58,7 @@ def determine_alarm_level(count):
 
 @app.route('/')
 def home():
-    return "🔥 Fire Detection API is running!"
+    return "🔥 Fire Detection API is running! (Fire + Structure detection active, Smoke detection temporarily disabled)"
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -92,9 +91,10 @@ def predict():
         structure_pred = structure_model.predict(image, verbose=0)[0]
         structure_result = STRUCTURE_CLASSES[np.argmax(structure_pred)]
 
-        # 🌫️ Smoke intensity prediction
-        smoke_pred = smoke_model.predict(image, verbose=0)[0]
-        smoke_result = SMOKE_CLASSES[np.argmax(smoke_pred)]
+        # 🌫️ Smoke intensity prediction - TEMPORARILY DISABLED
+        # smoke_pred = smoke_model.predict(image, verbose=0)[0]
+        # smoke_result = SMOKE_CLASSES[np.argmax(smoke_pred)]
+        smoke_result = "Smoke detection temporarily unavailable"
 
         # 🚨 Alarm level
         alarm_level = determine_alarm_level(num_structures)
@@ -104,9 +104,10 @@ def predict():
             'prediction': fire_result,
             'confidence': f"{fire_confidence:.2f}%",
             'structure': structure_result,
-            'number of structures on fire': num_structures,
-            'alarm level': alarm_level,
-            'smoke intensity': smoke_result,
+            'number_of_structures_on_fire': num_structures,
+            'alarm_level': alarm_level,
+            'smoke_intensity': smoke_result,
+            'note': 'Smoke detection temporarily disabled due to model issues'
         })
 
     except Exception as e:
@@ -115,4 +116,3 @@ def predict():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))  # Fallback to 5000 for local dev
     app.run(debug=False, host='0.0.0.0', port=port)
-

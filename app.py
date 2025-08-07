@@ -113,6 +113,9 @@ def predict():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# 🚀 Fixed for Railway deployment
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))  # Fallback to 5000 for local dev
+    # Railway provides PORT environment variable
+    port = int(os.environ.get('PORT', 5000))
+    # Must bind to 0.0.0.0 for Railway to access it
     app.run(debug=False, host='0.0.0.0', port=port)

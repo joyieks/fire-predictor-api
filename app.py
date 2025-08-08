@@ -52,8 +52,10 @@ def determine_alarm_level(count):
 def home():
     return "Fire Detection API is running! (Fire + Structure + Smoke detection active)"
 
-@app.route('/predict', methods=['POST'])
+@app.route('/predict', methods=['GET', 'POST'])
 def predict():
+    if request.method == 'GET':
+        return jsonify({"message": "Send a POST request with an image to get predictions."})
     global fire_model, structure_model, smoke_model
 
     # Lazy load models

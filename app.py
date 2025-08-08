@@ -8,67 +8,62 @@ from PIL import Image
 import io
 import os
 
-# 🧠 Prevent TensorFlow from allocating all memory at once
+
 physical_devices = tf.config.list_physical_devices('GPU')
 if physical_devices:
     try:
         for device in physical_devices:
             tf.config.experimental.set_memory_growth(device, True)
     except:
-        pass  # Fail silently if not supported
+        pass
 
 app = Flask(__name__)
 
-# ✅ Load working models only
-fire_model = load_model("fire_mobilenet_model.keras")
-structure_model = load_model("structure_material_classifier.keras")
-smoke_model = load_model("smoke_balanced_mobilenetv2_model.keras")
+# Model variables (loaded on demand)
+fire_model = None
+structure_model = None
+smoke_model = None
 
 FIRE_CLASSES = ['Fire', 'No Fire']
 STRUCTURE_CLASSES = ['Concrete Building', 'Metal Structure', 'Wooden Houses']
 SMOKE_CLASSES = ['high', 'low', 'medium']
 
-#  Helper: Determine alarm level based on number of structures on fire
 def determine_alarm_level(count):
     if count is None:
         return "Unknown - structure count not provided"
-    if count >= 80:
-        return "General Alarm - Major area affected (80 fire trucks)"
-    elif count >= 36:
-        return "Task Force Delta - 36 fire trucks"
-    elif count >= 32:
-        return "Task Force Charlie - 32 fire trucks"
-    elif count >= 28:
-        return "Task Force Bravo - 28 fire trucks"
-    elif count >= 24:
-        return "Task Force Alpha - 24 fire trucks"
-    elif count >= 20:
-        return "Fifth Alarm - 20 fire trucks"
-    elif count >= 16:
-        return "Fourth Alarm - 16 fire trucks"
-    elif count >= 12:
-        return "Third Alarm - 12 fire trucks"
-    elif count >= 8:
-        return "Second Alarm - 8 fire trucks"
-    elif count >= 4:
-        return "First Alarm - 4 fire trucks"
-    elif count >= 1:
-        return "Under Control - Low fire risk"
-    else:
-        return "Fireout - Fire has been neutralized"
+    if count >= 80: return "General Alarm - Major area affected (80 fire trucks)"
+    elif count >= 36: return "Task Force Delta - 36 fire trucks"
+    elif count >= 32: return "Task Force Charlie - 32 fire trucks"
+    elif count >= 28: return "Task Force Bravo - 28 fire trucks"
+    elif count >= 24: return "Task Force Alpha - 24 fire trucks"
+    elif count >= 20: return "Fifth Alarm - 20 fire trucks"
+    elif count >= 16: return "Fourth Alarm - 16 fire trucks"
+    elif count >= 12: return "Third Alarm - 12 fire trucks"
+    elif count >= 8:  return "Second Alarm - 8 fire trucks"
+    elif count >= 4:  return "First Alarm - 4 fire trucks"
+    elif count >= 1:  return "Under Control - Low fire risk"
+    else:             return "Fireout - Fire has been neutralized"
 
 @app.route('/')
 def home():
-   return " Fire Detection API is running! (Fire + Structure + Smoke detection active)"
+    return "Fire Detection API is running! (Fire + Structure + Smoke detection active)"
 
 @app.route('/predict', methods=['POST'])
 def predict():
+    global fire_model, structure_model, smoke_model
+
+    # Lazy load models
+    if fire_model is None:
+        fire_model = load_model("fire_mobilenet_model.keras")
+    if structure_model is None:
+        structure_model = load_model("structure_material_classifier.keras")
+    if smoke_model is None:
+        smoke_model = load_model("smoke_balanced_mobilenetv2_model.keras")
+
     if 'image' not in request.files:
         return jsonify({'error': 'No image uploaded'}), 400
 
     file = request.files['image']
-
-    # Optional input from frontend/Postman
     num_structures = request.form.get('number_of_structures_on_fire')
     try:
         num_structures = int(num_structures)
@@ -76,34 +71,25 @@ def predict():
         num_structures = None
 
     try:
-       
-        # 📷 Preprocess image for MobileNet / MobileNetV2
         image = Image.open(io.BytesIO(file.read())).convert('RGB')
         image = image.resize((224, 224))
         image = img_to_array(image)
-        image = preprocess_input(image)  # ✅ scales to [-1, 1] and applies proper normalization
+        image = preprocess_input(image)
         image = np.expand_dims(image, axis=0)
 
-        #  Fire prediction
         fire_pred = fire_model.predict(image, verbose=0)[0]
-        fire_class_index = np.argmax(fire_pred)
-        fire_result = FIRE_CLASSES[fire_class_index]
+        fire_result = FIRE_CLASSES[np.argmax(fire_pred)]
         fire_confidence = float(np.max(fire_pred)) * 100
 
-        #  Structure prediction
         structure_pred = structure_model.predict(image, verbose=0)[0]
         structure_result = STRUCTURE_CLASSES[np.argmax(structure_pred)]
 
-        
-               # 🌫️ Smoke prediction
         smoke_pred = smoke_model.predict(image, verbose=0)[0]
         smoke_result = SMOKE_CLASSES[np.argmax(smoke_pred)]
         smoke_confidence = float(np.max(smoke_pred)) * 100
 
-        #  Alarm level
         alarm_level = determine_alarm_level(num_structures)
 
-        #  Return result
         return jsonify({
             'prediction': fire_result,
             'confidence': f"{fire_confidence:.2f}%",
@@ -114,13 +100,9 @@ def predict():
             'smoke_confidence': f"{smoke_confidence:.2f}%",
         })
 
-
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# Fixed for Railway deployment
 if __name__ == '__main__':
-    # Railway provides PORT environment variable
     port = int(os.environ.get('PORT', 5000))
-    # Must bind to 0.0.0.0 for Railway to access it
     app.run(debug=False, host='0.0.0.0', port=port)

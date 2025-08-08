@@ -1,19 +1,16 @@
-# Use official TensorFlow image (TensorFlow already installed)
-FROM tensorflow/tensorflow:2.19.0
+FROM python:3.10-slim
 
 # Set working directory
 WORKDIR /app
 
-# Copy requirements before installing
+# Install dependencies
 COPY requirements.txt .
-
-# Install packages
-RUN pip install --no-cache-dir --ignore-installed -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
 COPY . .
 
-# Set environment variables
+# Environment variables
 ENV PYTHONUNBUFFERED=1
 
 # Expose port

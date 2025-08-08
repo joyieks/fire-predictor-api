@@ -21,7 +21,7 @@ app = Flask(__name__)
 # ✅ Load working models only
 fire_model = load_model("fire_mobilenet_model.keras")
 structure_model = load_model("structure_classifier_model_finetuned.keras")
-# smoke_model = load_model("final_smoke_model.keras")  # TEMPORARILY DISABLED
+smoke_model = load_model("smoke_balanced_model.keras")  
 
 FIRE_CLASSES = ['Fire', 'No Fire']
 STRUCTURE_CLASSES = ['Concrete Building', 'Metal Structure', 'Wooden Houses']
@@ -91,9 +91,9 @@ def predict():
         structure_pred = structure_model.predict(image, verbose=0)[0]
         structure_result = STRUCTURE_CLASSES[np.argmax(structure_pred)]
 
-        # 🌫️ Smoke intensity prediction - TEMPORARILY DISABLED
-        # smoke_pred = smoke_model.predict(image, verbose=0)[0]
-        # smoke_result = SMOKE_CLASSES[np.argmax(smoke_pred)]
+        
+        smoke_pred = smoke_model.predict(image, verbose=0)[0]
+        smoke_result = SMOKE_CLASSES[np.argmax(smoke_pred)]
         smoke_result = "Smoke detection temporarily unavailable"
 
         # 🚨 Alarm level

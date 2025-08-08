@@ -1,5 +1,5 @@
 # Use official TensorFlow image (TensorFlow already installed)
-FROM tensorflow/tensorflow:latest
+FROM tensorflow/tensorflow:2.19.0
 
 # Set working directory
 WORKDIR /app

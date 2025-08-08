@@ -9,6 +9,10 @@ import io
 import os
 
 
+# === Debug info to check Railway runtime ===
+print("🚀 TensorFlow version in Railway:", tf.__version__)
+print("🖥️  Available devices:", tf.config.list_physical_devices())
+
 physical_devices = tf.config.list_physical_devices('GPU')
 if physical_devices:
     try:

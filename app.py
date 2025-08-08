@@ -90,7 +90,7 @@ def predict():
         structure_pred = structure_model.predict(image, verbose=0)[0]
         structure_result = STRUCTURE_CLASSES[np.argmax(structure_pred)]
 
-        smoke_pred = smoke_model.predict(image, verbose=0)[0]
+        smoke_pred = smoke_model.predict(image)[0]
         smoke_result = SMOKE_CLASSES[np.argmax(smoke_pred)]
         smoke_confidence = float(np.max(smoke_pred)) * 100
 

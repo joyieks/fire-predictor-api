@@ -61,7 +61,7 @@ def predict():
     if structure_model is None:
         structure_model = load_model("structure_material_classifier.keras")
     if smoke_model is None:
-        smoke_model = load_model("smoke_railway_compatible_tf2190.keras")
+        smoke_model = load_model("smoke_balanced_mobilenetv2_model.keras")
 
     if 'image' not in request.files:
         return jsonify({'error': 'No image uploaded'}), 400

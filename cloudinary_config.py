@@ -2,6 +2,10 @@ import cloudinary
 import cloudinary.uploader
 import cloudinary.api
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file (local development only)
+load_dotenv()
 
 # Use environment variables for security
 cloudinary.config(

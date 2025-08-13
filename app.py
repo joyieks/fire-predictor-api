@@ -7,10 +7,25 @@ import numpy as np
 from PIL import Image
 import io
 import os
+import json
+import firebase_admin
+from firebase_admin import credentials, firestore
+import cloudinary.uploader
+from cloudinary_config import cloudinary
+from datetime import datetime
 
+# === Firebase Initialization ===
+if "FIREBASE_SERVICE_ACCOUNT" in os.environ:
+    service_account_json = json.loads(os.environ["FIREBASE_SERVICE_ACCOUNT"])
+    cred = credentials.Certificate(service_account_json)
+else:
+    cred = credentials.Certificate("project-fira-9b6d9-firebase-adminsdk-fbsvc-178360e8ca.json")  # Local testing
+
+firebase_admin.initialize_app(cred)
+db = firestore.client()
 
 # === Debug info to check Railway runtime ===
-print("🚀 TensorFlow version in Railway:", tf.__version__)
+print("🚀 TensorFlow version:", tf.__version__)
 print("🖥️  Available devices:", tf.config.list_physical_devices())
 
 physical_devices = tf.config.list_physical_devices('GPU')
@@ -48,19 +63,31 @@ def determine_alarm_level(count):
     elif count >= 1:  return "Under Control - Low fire risk"
     else:             return "Fireout - Fire has been neutralized"
 
+def save_report_to_firestore(photo_url, prediction_json):
+    doc_ref = db.collection("fire_reports").document()
+    doc_ref.set({
+        "timestamp": datetime.utcnow().isoformat(),
+        "photo_url": photo_url,
+        **prediction_json
+    })
+
 @app.route('/')
 def home():
     return "Fire Detection API is running! (Fire + Structure + Smoke detection active)"
 
-@app.route('/predict', methods=[ 'POST'])
+@app.route('/predict', methods=['POST'])
 def predict():
     global fire_model, structure_model, smoke_model
+    
     # Lazy load models
     if fire_model is None:
+        print("Loading fire detection model...")
         fire_model = load_model("fire_mobilenet_model.keras")
     if structure_model is None:
+        print("Loading structure classification model...")
         structure_model = load_model("structure_material_classifier.keras")
     if smoke_model is None:
+        print("Loading smoke detection model...")
         smoke_model = load_model("smoke_balanced_mobilenetv2_model_fixed_final.keras")
 
     if 'image' not in request.files:
@@ -74,12 +101,19 @@ def predict():
         num_structures = None
 
     try:
+        # ==== 1️⃣ Upload image to Cloudinary ====
+        upload_result = cloudinary.uploader.upload(file, folder="fire_reports")
+        photo_url = upload_result.get("secure_url")
+
+        # ==== 2️⃣ Prepare image for prediction ====
+        file.stream.seek(0)  # reset pointer since Cloudinary read it
         image = Image.open(io.BytesIO(file.read())).convert('RGB')
         image = image.resize((224, 224))
         image = img_to_array(image)
         image = preprocess_input(image)
         image = np.expand_dims(image, axis=0)
 
+        # Make predictions
         fire_pred = fire_model.predict(image, verbose=0)[0]
         fire_result = FIRE_CLASSES[np.argmax(fire_pred)]
         fire_confidence = float(np.max(fire_pred)) * 100
@@ -93,17 +127,26 @@ def predict():
 
         alarm_level = determine_alarm_level(num_structures)
 
-        return jsonify({
+        # ==== 3️⃣ Save to Firestore ====
+        prediction_data = {
             'prediction': fire_result,
             'confidence': f"{fire_confidence:.2f}%",
             'structure': structure_result,
             'number_of_structures_on_fire': num_structures,
             'alarm_level': alarm_level,
             'smoke_intensity': smoke_result,
-            'smoke_confidence': f"{smoke_confidence:.2f}%",
+            'smoke_confidence': f"{smoke_confidence:.2f}%"
+        }
+        save_report_to_firestore(photo_url, prediction_data)
+
+        # ==== 4️⃣ Return response ====
+        return jsonify({
+            'photo_url': photo_url,
+            **prediction_data
         })
 
     except Exception as e:
+        print(f"Error during prediction: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

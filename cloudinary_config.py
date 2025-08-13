@@ -2,10 +2,6 @@ import cloudinary
 import cloudinary.uploader
 import cloudinary.api
 import os
-from dotenv import load_dotenv
-
-# Load environment variables from .env file (local development only)
-load_dotenv()
 
 # Don't use load_dotenv() in production - Railway provides env vars directly
 # load_dotenv()  # Comment this out or remove it

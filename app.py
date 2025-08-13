@@ -19,7 +19,7 @@ if "FIREBASE_SERVICE_ACCOUNT" in os.environ:
     service_account_json = json.loads(os.environ["FIREBASE_SERVICE_ACCOUNT"])
     cred = credentials.Certificate(service_account_json)
 else:
-    cred = credentials.Certificate("project-fira-9b6d9-firebase-adminsdk-fbsvc-178360e8ca.json")  # Local testing
+    cred = credentials.Certificate("C:\\Users\\acer\\Downloads\\project-fira-9b6d9-firebase-adminsdk-fbsvc-178360e8ca.json")  # Local testing
 
 firebase_admin.initialize_app(cred)
 db = firestore.client()

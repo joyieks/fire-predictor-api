@@ -4,3 +4,4 @@ pillow
 numpy
 gunicorn
 firebase-admin
+cloudinary==1.36.0

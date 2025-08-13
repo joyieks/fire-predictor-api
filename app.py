@@ -63,11 +63,16 @@ def determine_alarm_level(count):
     elif count >= 1:  return "Under Control - Low fire risk"
     else:             return "Fireout - Fire has been neutralized"
 
-def save_report_to_firestore(photo_url, prediction_json):
+
+def save_report_to_firestore(photo_url, prediction_json, geotag_location=None, cause_of_fire=None, user_id=None, user_name=None):
     doc_ref = db.collection("fire_reports").document()
     doc_ref.set({
         "timestamp": datetime.utcnow().isoformat(),
         "photo_url": photo_url,
+        "geotag_location": geotag_location,
+        "cause_of_fire": cause_of_fire[:200] if cause_of_fire else None,
+        "reporter": user_name,  # Real user name
+        "reporterId": user_id,  # User UID for filtering
         **prediction_json
     })
 
@@ -95,6 +100,11 @@ def predict():
 
     file = request.files['image']
     num_structures = request.form.get('number_of_structures_on_fire')
+    geotag_location = request.form.get('geotag_location')  # NEW FIELD
+    cause_of_fire = request.form.get('cause_of_fire')      # NEW FIELD
+    user_id = request.form.get('user_id')      # NEW FIELD
+    user_name = request.form.get('user_name')  # NEW FIELD
+    
     try:
         num_structures = int(num_structures)
     except (TypeError, ValueError):
@@ -137,16 +147,54 @@ def predict():
             'smoke_intensity': smoke_result,
             'smoke_confidence': f"{smoke_confidence:.2f}%"
         }
-        save_report_to_firestore(photo_url, prediction_data)
+        save_report_to_firestore(photo_url, prediction_data, geotag_location, cause_of_fire, user_id, user_name)  # UPDATED
 
         # ==== 4️⃣ Return response ====
         return jsonify({
             'photo_url': photo_url,
+            'geotag_location': geotag_location,  # NEW FIELD
+            'cause_of_fire': cause_of_fire,      # NEW FIELD
             **prediction_data
         })
 
     except Exception as e:
         print(f"Error during prediction: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    
+    
+@app.route('/get_reports', methods=['GET'])
+def get_reports():
+    try:
+        # Get all reports from Firestore
+        reports_ref = db.collection("fire_reports")
+        reports = reports_ref.stream()
+        
+        reports_list = []
+        for report in reports:
+            report_data = report.to_dict()
+            report_data['id'] = report.id
+            # Ensure all expected fields are present
+            report_data.setdefault('photo_url', None)
+            report_data.setdefault('geotag_location', None)
+            report_data.setdefault('cause_of_fire', None)
+            report_data.setdefault('prediction', None)
+            report_data.setdefault('confidence', None)
+            report_data.setdefault('structure', None)
+            report_data.setdefault('number_of_structures_on_fire', None)
+            report_data.setdefault('alarm_level', None)
+            report_data.setdefault('smoke_intensity', None)
+            report_data.setdefault('smoke_confidence', None)
+            report_data.setdefault('reporter', None)
+            report_data.setdefault('reporterId', None)
+            report_data.setdefault('timestamp', None)
+            reports_list.append(report_data)
+        
+        # Sort by timestamp (newest first)
+        reports_list.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+        
+        return jsonify(reports_list)
+    except Exception as e:
+        print(f"Error retrieving reports: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

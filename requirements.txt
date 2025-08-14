@@ -6,3 +6,4 @@ gunicorn
 firebase-admin
 cloudinary
 python-dotenv
+flask-cors

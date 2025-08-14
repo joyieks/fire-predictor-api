@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import tensorflow as tf
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.image import img_to_array
+from flask_cors import CORS
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 import numpy as np
 from PIL import Image
@@ -37,6 +38,15 @@ if physical_devices:
         pass
 
 app = Flask(__name__)
+
+# === CORS Configuration ===
+CORS(app, resources={
+    r"/*": {
+        "origins": ["*"],  # Allow all origins in development
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
 
 # Model variables (loaded on demand)
 fire_model = None

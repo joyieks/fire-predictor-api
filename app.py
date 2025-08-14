@@ -196,6 +196,64 @@ def get_reports():
     except Exception as e:
         print(f"Error retrieving reports: {str(e)}")
         return jsonify({'error': str(e)}), 500
+    
+
+@app.route('/update_report/<report_id>', methods=['PUT'])
+def update_report(report_id):
+    try:
+        data = request.get_json()
+        
+        # Get the report document
+        report_ref = db.collection("fire_reports").document(report_id)
+        report_doc = report_ref.get()
+        
+        if not report_doc.exists:
+            return jsonify({'error': 'Report not found'}), 404
+        
+        # Update only allowed fields
+        update_data = {}
+        if 'cause_of_fire' in data:
+            update_data['cause_of_fire'] = data['cause_of_fire'][:200]  # Limit to 200 chars
+        
+        if 'number_of_structures_on_fire' in data:
+            try:
+                num_structures = int(data['number_of_structures_on_fire'])
+                update_data['number_of_structures_on_fire'] = num_structures
+                # Recalculate alarm level
+                update_data['alarm_level'] = determine_alarm_level(num_structures)
+            except (TypeError, ValueError):
+                update_data['number_of_structures_on_fire'] = None
+                update_data['alarm_level'] = "Unknown - structure count not provided"
+        
+        # Update the document
+        report_ref.update(update_data)
+        
+        # Return updated report
+        updated_doc = report_ref.get()
+        return jsonify(updated_doc.to_dict())
+        
+    except Exception as e:
+        print(f"Error updating report: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/delete_report/<report_id>', methods=['DELETE'])
+def delete_report(report_id):
+    try:
+        # Get the report document
+        report_ref = db.collection("fire_reports").document(report_id)
+        report_doc = report_ref.get()
+        
+        if not report_doc.exists:
+            return jsonify({'error': 'Report not found'}), 404
+        
+        # Delete the document
+        report_ref.delete()
+        
+        return jsonify({'message': 'Report deleted successfully'})
+        
+    except Exception as e:
+        print(f"Error deleting report: {str(e)}")
+        return jsonify({'error': str(e)}), 500 
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

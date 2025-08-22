@@ -13,7 +13,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import cloudinary.uploader
 from cloudinary_config import cloudinary
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 # === Firebase Initialization ===
 if "FIREBASE_SERVICE_ACCOUNT" in os.environ:
@@ -75,9 +75,13 @@ def determine_alarm_level(count):
 
 
 def save_report_to_firestore(photo_url, prediction_json, geotag_location=None, cause_of_fire=None, user_id=None, user_name=None):
+    # Set timezone to UTC+8 (Asia/Manila)
+    manila_tz = timezone(timedelta(hours=8))
+    local_time = datetime.now(manila_tz)
+    formatted_time = local_time.strftime("%I:%M %p").lstrip("0").lower()  # e.g., 1:37 pm
     doc_ref = db.collection("fire_reports").document()
     doc_ref.set({
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": formatted_time,
         "photo_url": photo_url,
         "geotag_location": geotag_location,
         "cause_of_fire": cause_of_fire[:200] if cause_of_fire else None,

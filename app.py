@@ -78,7 +78,8 @@ def save_report_to_firestore(photo_url, prediction_json, geotag_location=None, c
     # Set timezone to UTC+8 (Asia/Manila)
     manila_tz = timezone(timedelta(hours=8))
     local_time = datetime.now(manila_tz)
-    formatted_time = local_time.strftime("%I:%M %p").lstrip("0").lower()  # e.g., 1:37 pm
+    # Format: August 22 10:30 pm
+    formatted_time = local_time.strftime("%B %d %I:%M %p").replace(" 0", " ").replace("AM", "am").replace("PM", "pm")
     doc_ref = db.collection("fire_reports").document()
     doc_ref.set({
         "timestamp": formatted_time,

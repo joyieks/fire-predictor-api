@@ -333,7 +333,8 @@ def predict():
 
         structure_pred = structure_model.predict(image, verbose=0)[0]
         structure_result = STRUCTURE_CLASSES[np.argmax(structure_pred)]
-
+        structure_confidence = float(np.max(smoke_pred)) * 100
+        
         smoke_pred = smoke_model.predict(image, verbose=0)[0]
         smoke_result = SMOKE_CLASSES[np.argmax(smoke_pred)]
         smoke_confidence = float(np.max(smoke_pred)) * 100
@@ -345,6 +346,7 @@ def predict():
             'prediction': fire_result,
             'confidence': f"{fire_confidence:.2f}%",
             'structure': structure_result,
+            'structure_confidence': f"{structure_confidence:.2f}%", 
             'number_of_structures_on_fire': num_structures,
             'recommended_alarm_level': alarm_level,
             'smoke_intensity': smoke_result,
@@ -492,7 +494,8 @@ def update_report(report_id):
             
             structure_pred = structure_model.predict(image, verbose=0)[0]
             structure_result = STRUCTURE_CLASSES[np.argmax(structure_pred)]
-            
+            structure_confidence = float(np.max(structure_pred)) * 100  
+
             smoke_pred = smoke_model.predict(image, verbose=0)[0]
             smoke_result = SMOKE_CLASSES[np.argmax(smoke_pred)]
             smoke_confidence = float(np.max(smoke_pred)) * 100
@@ -596,14 +599,6 @@ def update_report(report_id):
         print(f"Error updating report: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/delete_report/<report_id>', methods=['DELETE'])
-def delete_report(report_id):
-    try:
-        supabase.table("fire_reports").delete().eq('id', report_id).execute()
-        return jsonify({'message': 'Report deleted successfully'})
-    except Exception as e:
-        print(f"Error deleting report: {str(e)}")
-        return jsonify({'error': str(e)}), 500
     
 # ENHANCED BACKEND CANCEL REPORT ENDPOINT
 @app.route('/cancel_report/<report_id>', methods=['POST'])
@@ -737,42 +732,6 @@ def get_reports_near():
         print(f"Error getting nearby reports: {str(e)}")
         return jsonify({'error': str(e)}), 500
     
-
-@app.route('/update_report_status/<report_id>', methods=['PATCH'])
-def update_report_status(report_id):
-    """
-    Dedicated endpoint for updating just the status of a fire report
-    Useful for admin dashboard quick status changes
-    """
-    try:
-        data = request.get_json()
-        
-        if 'status' not in data:
-            return jsonify({'error': 'Status field is required'}), 400
-        
-        new_status = data['status']
-        valid_statuses = ['On Going', 'Under Control', 'Fire Out', 'False Alarm']
-        
-        if new_status not in valid_statuses:
-            return jsonify({'error': f'Invalid status. Must be one of: {", ".join(valid_statuses)}'}), 400
-        
-        # Update only the status
-        update_data = {'status': new_status}
-        
-        # Execute update
-        result = supabase.table("fire_reports").update(update_data).eq('id', report_id).execute()
-        
-        if not result.data:
-            return jsonify({'error': 'Report not found'}), 404
-        
-        print(f"✅ Updated report {report_id} status to: {new_status}")
-        
-        # Return updated record
-        updated = supabase.table("fire_reports").select("*").eq('id', report_id).execute()
-        return jsonify({
-            'message': f'Status updated successfully to {new_status}',
-            'report': updated.data[0] if updated.data else {}
-        })
         
     except Exception as e:
         print(f"Error updating report status: {str(e)}")
@@ -841,6 +800,46 @@ def update_final_alarm_level():
     except Exception as e:
         print(f"Error updating final alarm level: {str(e)}")
         return jsonify({'error': str(e)}), 500
+    
+@app.route('/update_report_status/<report_id>', methods=['PATCH'])
+def update_report_status(report_id):
+    """
+    Dedicated endpoint for updating just the status of a fire report
+    Useful for admin dashboard quick status changes
+    """
+    try:
+        data = request.get_json()
+        
+        if 'status' not in data:
+            return jsonify({'error': 'Status field is required'}), 400
+        
+        new_status = data['status']
+        valid_statuses = ['On Going', 'Under Control', 'Fire Out', 'False Alarm', "Cancelled"]
+        
+        if new_status not in valid_statuses:
+            return jsonify({'error': f'Invalid status. Must be one of: {", ".join(valid_statuses)}'}), 400
+        
+        # Update only the status
+        update_data = {'status': new_status}
+        
+        # Execute update
+        result = supabase.table("fire_reports").update(update_data).eq('id', report_id).execute()
+        
+        if not result.data:
+            return jsonify({'error': 'Report not found'}), 404
+        
+        print(f"✅ Updated report {report_id} status to: {new_status}")
+        
+        # Return updated record
+        updated = supabase.table("fire_reports").select("*").eq('id', report_id).execute()
+        return jsonify({
+            'message': f'Status updated successfully to {new_status}',
+            'report': updated.data[0] if updated.data else {}
+        })
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/update_report_status', methods=['POST'])
 def update_report_status_post():

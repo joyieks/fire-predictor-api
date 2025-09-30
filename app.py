@@ -333,8 +333,8 @@ def predict():
 
         structure_pred = structure_model.predict(image, verbose=0)[0]
         structure_result = STRUCTURE_CLASSES[np.argmax(structure_pred)]
-        structure_confidence = float(np.max(smoke_pred)) * 100
-        
+        structure_confidence = float(np.max(structure_pred)) * 100
+
         smoke_pred = smoke_model.predict(image, verbose=0)[0]
         smoke_result = SMOKE_CLASSES[np.argmax(smoke_pred)]
         smoke_confidence = float(np.max(smoke_pred)) * 100
@@ -494,7 +494,7 @@ def update_report(report_id):
             
             structure_pred = structure_model.predict(image, verbose=0)[0]
             structure_result = STRUCTURE_CLASSES[np.argmax(structure_pred)]
-            structure_confidence = float(np.max(structure_pred)) * 100  
+            structure_confidence = float(np.max(structure_pred)) * 100
 
             smoke_pred = smoke_model.predict(image, verbose=0)[0]
             smoke_result = SMOKE_CLASSES[np.argmax(smoke_pred)]

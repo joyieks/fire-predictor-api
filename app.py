@@ -331,9 +331,16 @@ def predict():
         fire_result = FIRE_CLASSES[np.argmax(fire_pred)]
         fire_confidence = float(np.max(fire_pred)) * 100
 
+        # Structure prediction with confidence percentages
         structure_pred = structure_model.predict(image, verbose=0)[0]
         structure_result = STRUCTURE_CLASSES[np.argmax(structure_pred)]
-    
+        structure_confidence = float(np.max(structure_pred)) * 100
+        
+        # Get all structure probabilities for detailed breakdown
+        structure_probabilities = {
+            STRUCTURE_CLASSES[i]: f"{float(structure_pred[i]) * 100:.2f}%" 
+            for i in range(len(STRUCTURE_CLASSES))
+        }
 
         smoke_pred = smoke_model.predict(image, verbose=0)[0]
         smoke_result = SMOKE_CLASSES[np.argmax(smoke_pred)]
@@ -346,6 +353,8 @@ def predict():
             'prediction': fire_result,
             'confidence': f"{fire_confidence:.2f}%",
             'structure': structure_result,
+            'structure_confidence': f"{structure_confidence:.2f}%",  # Added structure confidence
+            'structure_probabilities': structure_probabilities,  # Added detailed probabilities
             'number_of_structures_on_fire': num_structures,
             'recommended_alarm_level': alarm_level,
             'smoke_intensity': smoke_result,
@@ -491,9 +500,16 @@ def update_report(report_id):
             fire_result = FIRE_CLASSES[np.argmax(fire_pred)]
             fire_confidence = float(np.max(fire_pred)) * 100
 
+            # Structure prediction with confidence percentages
             structure_pred = structure_model.predict(image, verbose=0)[0]
             structure_result = STRUCTURE_CLASSES[np.argmax(structure_pred)]
-           
+            structure_confidence = float(np.max(structure_pred)) * 100
+            
+            # Get all structure probabilities for detailed breakdown
+            structure_probabilities = {
+                STRUCTURE_CLASSES[i]: f"{float(structure_pred[i]) * 100:.2f}%" 
+                for i in range(len(STRUCTURE_CLASSES))
+            }
 
             smoke_pred = smoke_model.predict(image, verbose=0)[0]
             smoke_result = SMOKE_CLASSES[np.argmax(smoke_pred)]
@@ -525,6 +541,8 @@ def update_report(report_id):
                 'prediction': fire_result,
                 'confidence': f"{fire_confidence:.2f}%",
                 'structure': structure_result,
+                'structure_confidence': f"{structure_confidence:.2f}%",  # Added structure confidence
+                'structure_probabilities': structure_probabilities,  # Added detailed probabilities
                 'recommended_alarm_level': alarm_level,
                 'smoke_intensity': smoke_result,
                 'smoke_confidence': f"{smoke_confidence:.2f}%",
@@ -676,7 +694,6 @@ def cancel_report(report_id):
             'error': f'Failed to cancel report: {str(e)}',
             'report_id': report_id
         }), 500
-
 
 @app.route('/reports_near', methods=['GET'])
 def get_reports_near():

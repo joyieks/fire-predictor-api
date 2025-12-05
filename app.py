@@ -61,7 +61,7 @@ structure_model = None
 smoke_model = None
 
 FIRE_CLASSES = ['Fire', 'No Fire']
-STRUCTURE_CLASSES = ['Concrete Building', 'Metal Structure', 'Wooden Houses']
+STRUCTURE_CLASSES = ['Concrete Structure', 'Metal Structure', 'Wooden Structure']
 SMOKE_CLASSES = ['high', 'low', 'medium']
 
 def determine_alarm_level(houses):

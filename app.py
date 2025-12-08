@@ -3,8 +3,9 @@ import tensorflow as tf
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.image import img_to_array
 from flask_cors import CORS
-from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
-from tensorflow.keras.applications.mobilenet_v3 import preprocess_input
+# ✅ Import BOTH preprocessing functions for different models
+import tensorflow.keras.applications.mobilenet_v2 as mobilenet_v2
+import tensorflow.keras.applications.mobilenet_v3 as mobilenet_v3
 import numpy as np
 from PIL import Image
 import io
@@ -327,11 +328,11 @@ def predict():
         
         # ✅ Create separate preprocessed versions for each model
         # Fire and Structure models: trained with MobileNetV2
-        image_v2 = preprocess_v2(image_array.copy())
+        image_v2 = mobilenet_v2.preprocess_input(image_array.copy())
         image_v2 = np.expand_dims(image_v2, axis=0)
         
         # Smoke model: trained with MobileNetV3
-        image_v3 = preprocess_v3(image_array.copy())
+        image_v3 = mobilenet_v3.preprocess_input(image_array.copy())
         image_v3 = np.expand_dims(image_v3, axis=0)
 
         # Make predictions with correct preprocessing for each model

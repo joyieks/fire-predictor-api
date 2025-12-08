@@ -62,7 +62,7 @@ smoke_model = None
 
 FIRE_CLASSES = ['Fire', 'No Fire']
 STRUCTURE_CLASSES = ['Concrete Structure', 'Metal Structure', 'Wooden Structure']
-SMOKE_CLASSES = ['high', 'low', 'medium']
+SMOKE_CLASSES = ['Smoke', 'No Smoke']
 
 def determine_alarm_level(houses):
     if houses is None:
@@ -297,7 +297,7 @@ def predict():
         structure_model = load_model("structure_material_classifier.keras")
     if smoke_model is None:
         print("Loading smoke detection model...")
-        smoke_model = load_model("smoke_balanced_mobilenetv2_model_fixed_final.keras")
+        smoke_model = load_model("smoke_detection_model.keras")
 
     if 'image' not in request.files:
         return jsonify({'error': 'No image uploaded'}), 400
@@ -357,7 +357,7 @@ def predict():
             'structure_probabilities': structure_probabilities,  # Added detailed probabilities
             'number_of_structures_on_fire': num_structures,
             'recommended_alarm_level': alarm_level,
-            'smoke_intensity': smoke_result,
+            'smoke_detection': smoke_result,
             'smoke_confidence': f"{smoke_confidence:.2f}%"
         }
         
@@ -493,7 +493,7 @@ def update_report(report_id):
             if structure_model is None:
                 structure_model = load_model("structure_material_classifier.keras")
             if smoke_model is None:
-                smoke_model = load_model("smoke_balanced_mobilenetv2_model_fixed_final.keras")
+                smoke_model = load_model("smoke_detection_model.keras")
             
             # Make new predictions
             fire_pred = fire_model.predict(image, verbose=0)[0]
@@ -544,7 +544,7 @@ def update_report(report_id):
                 'structure_confidence': f"{structure_confidence:.2f}%",  # Added structure confidence
                 'structure_probabilities': structure_probabilities,  # Added detailed probabilities
                 'recommended_alarm_level': alarm_level,
-                'smoke_intensity': smoke_result,
+                'smoke_detection': smoke_result,
                 'smoke_confidence': f"{smoke_confidence:.2f}%",
                 'status': final_status  # NEW: Include status
             }

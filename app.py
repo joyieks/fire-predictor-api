@@ -4,6 +4,7 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.image import img_to_array
 from flask_cors import CORS
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+from tensorflow.keras.applications.mobilenet_v3 import preprocess_input
 import numpy as np
 from PIL import Image
 import io
@@ -304,7 +305,7 @@ def predict():
 
     file = request.files['image']
     num_structures = request.form.get('number_of_structures_on_fire')
-    geotag_location = request.form.get('geotag_location')  # Raw coordinates
+    geotag_location = request.form.get('geotag_location')
     cause_of_fire = request.form.get('cause_of_fire')
     user_id = request.form.get('user_id')
     user_name = request.form.get('user_name')
@@ -315,68 +316,73 @@ def predict():
         num_structures = None
 
     try:
-        # ==== 1️⃣ Upload image to Supabase Storage ====
+        # Upload image to Supabase Storage
         image_url = upload_image_to_supabase(file)
 
-        # ==== 2️⃣ Prepare image for prediction ====
-        file.stream.seek(0)  # reset pointer since upload read it
-        image = Image.open(io.BytesIO(file.read())).convert('RGB')
-        image = image.resize((224, 224))
-        image = img_to_array(image)
-        image = preprocess_input(image)
-        image = np.expand_dims(image, axis=0)
+        # Prepare BASE image (no preprocessing yet)
+        file.stream.seek(0)
+        image_raw = Image.open(io.BytesIO(file.read())).convert('RGB')
+        image_raw = image_raw.resize((224, 224))
+        image_array = img_to_array(image_raw)
+        
+        # ✅ Create separate preprocessed versions for each model
+        # Fire and Structure models: trained with MobileNetV2
+        image_v2 = preprocess_v2(image_array.copy())
+        image_v2 = np.expand_dims(image_v2, axis=0)
+        
+        # Smoke model: trained with MobileNetV3
+        image_v3 = preprocess_v3(image_array.copy())
+        image_v3 = np.expand_dims(image_v3, axis=0)
 
-        # Make predictions
-        fire_pred = fire_model.predict(image, verbose=0)[0]
+        # Make predictions with correct preprocessing for each model
+        fire_pred = fire_model.predict(image_v2, verbose=0)[0]
         fire_result = FIRE_CLASSES[np.argmax(fire_pred)]
         fire_confidence = float(np.max(fire_pred)) * 100
 
-        # Structure prediction with confidence percentages
-        structure_pred = structure_model.predict(image, verbose=0)[0]
+        structure_pred = structure_model.predict(image_v2, verbose=0)[0]
         structure_result = STRUCTURE_CLASSES[np.argmax(structure_pred)]
         structure_confidence = float(np.max(structure_pred)) * 100
         
-        # Get all structure probabilities for detailed breakdown
         structure_probabilities = {
             STRUCTURE_CLASSES[i]: f"{float(structure_pred[i]) * 100:.2f}%" 
             for i in range(len(STRUCTURE_CLASSES))
         }
 
-        smoke_pred = smoke_model.predict(image, verbose=0)[0]
+        # ✅ Smoke detection uses MobileNetV3 preprocessing
+        smoke_pred = smoke_model.predict(image_v3, verbose=0)[0]
         smoke_result = SMOKE_CLASSES[np.argmax(smoke_pred)]
         smoke_confidence = float(np.max(smoke_pred)) * 100
+        
+        print(f"🔥 Smoke Detection: {smoke_result} ({smoke_confidence:.2f}%)")
+        print(f"📊 Raw smoke prediction: {smoke_pred}")
 
         alarm_level = determine_alarm_level(num_structures)
 
-        # ==== 3️⃣ Save to Supabase with coordinates AND address ====
         prediction_data = {
             'prediction': fire_result,
             'confidence': f"{fire_confidence:.2f}%",
             'structure': structure_result,
-            'structure_confidence': f"{structure_confidence:.2f}%",  # Added structure confidence
-            'structure_probabilities': structure_probabilities,  # Added detailed probabilities
+            'structure_confidence': f"{structure_confidence:.2f}%",
+            'structure_probabilities': structure_probabilities,
             'number_of_structures_on_fire': num_structures,
             'recommended_alarm_level': alarm_level,
             'smoke_detection': smoke_result,
             'smoke_confidence': f"{smoke_confidence:.2f}%"
         }
         
-        # Save report (this will now include both coordinates and resolved address)
         save_report_to_supabase(image_url, prediction_data, geotag_location, cause_of_fire, user_id, user_name)
 
-        # ==== 4️⃣ Parse coordinates for response ====
         latitude, longitude = parse_coordinates(geotag_location)
         resolved_address = None
         if latitude is not None and longitude is not None:
             resolved_address = reverse_geocode(latitude, longitude)
 
-        # ==== 5️⃣ Return enhanced response ====   
         return jsonify({
             'image_url': image_url,
-            'geotag_location': geotag_location,  # Raw coordinates
-            'latitude': latitude,                 # Parsed latitude
-            'longitude': longitude,               # Parsed longitude
-            'address': resolved_address,          # Human-readable address
+            'geotag_location': geotag_location,
+            'latitude': latitude,
+            'longitude': longitude,
+            'address': resolved_address,
             'cause_of_fire': cause_of_fire,
             **prediction_data
         })
@@ -384,6 +390,7 @@ def predict():
     except Exception as e:
         print(f"Error during prediction: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
 
 @app.route('/get_reports', methods=['GET'])
 def get_reports():

@@ -352,17 +352,19 @@ def predict():
         # ✅ Smoke detection uses MobileNetV3 preprocessing (BINARY CLASSIFICATION)
         smoke_pred = smoke_model.predict(image_v3, verbose=0)[0][0]  # Get single probability value
         
-        # INVERTED: Model appears to output LOW values for smoke, HIGH values for no smoke
-        # This happens when class 0='Smoke' and class 1='No Smoke' in training
-        if smoke_pred < 0.5:
+        # DEBUG: Log raw probability to understand model behavior
+        print(f"📊 RAW SMOKE PROBABILITY: {smoke_pred:.6f}")
+        
+        # Based on testing: high values (>0.5) = Smoke, low values (<0.5) = No Smoke
+        # This is the standard binary classification interpretation
+        if smoke_pred > 0.5:
             smoke_result = 'Smoke'
-            smoke_confidence = float(1 - smoke_pred) * 100
+            smoke_confidence = float(smoke_pred) * 100
         else:
             smoke_result = 'No Smoke'
-            smoke_confidence = float(smoke_pred) * 100
+            smoke_confidence = float(1 - smoke_pred) * 100
         
         print(f"🔥 Smoke Detection: {smoke_result} ({smoke_confidence:.2f}%)")
-        print(f"📊 Raw smoke prediction probability: {smoke_pred:.4f}")
 
         alarm_level = determine_alarm_level(num_structures)
 

@@ -352,13 +352,14 @@ def predict():
         # ✅ Smoke detection uses MobileNetV3 preprocessing (BINARY CLASSIFICATION)
         smoke_pred = smoke_model.predict(image_v3, verbose=0)[0][0]  # Get single probability value
         
-        # Binary classification: > 0.5 = Smoke, < 0.5 = No Smoke
-        if smoke_pred > 0.5:
+        # INVERTED: Model appears to output LOW values for smoke, HIGH values for no smoke
+        # This happens when class 0='Smoke' and class 1='No Smoke' in training
+        if smoke_pred < 0.5:
             smoke_result = 'Smoke'
-            smoke_confidence = float(smoke_pred) * 100
+            smoke_confidence = float(1 - smoke_pred) * 100
         else:
             smoke_result = 'No Smoke'
-            smoke_confidence = float(1 - smoke_pred) * 100
+            smoke_confidence = float(smoke_pred) * 100
         
         print(f"🔥 Smoke Detection: {smoke_result} ({smoke_confidence:.2f}%)")
         print(f"📊 Raw smoke prediction probability: {smoke_pred:.4f}")
@@ -528,13 +529,13 @@ def update_report(report_id):
             # Binary classification: get single probability value
             smoke_pred = smoke_model.predict(image, verbose=0)[0][0]
             
-            # Binary classification: > 0.5 = Smoke, < 0.5 = No Smoke
-            if smoke_pred > 0.5:
+            # INVERTED: Model outputs LOW values for smoke, HIGH values for no smoke
+            if smoke_pred < 0.5:
                 smoke_result = 'Smoke'
-                smoke_confidence = float(smoke_pred) * 100
+                smoke_confidence = float(1 - smoke_pred) * 100
             else:
                 smoke_result = 'No Smoke'
-                smoke_confidence = float(1 - smoke_pred) * 100
+                smoke_confidence = float(smoke_pred) * 100
             
             alarm_level = determine_alarm_level(num_structures)
             

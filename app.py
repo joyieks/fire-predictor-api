@@ -349,20 +349,22 @@ def predict():
             for i in range(len(STRUCTURE_CLASSES))
         }
 
-        # ✅ Smoke detection uses MobileNetV3 preprocessing (BINARY CLASSIFICATION)
-        smoke_pred = smoke_model.predict(image_v3, verbose=0)[0][0]  # Get single probability value
+        # ✅ Smoke detection uses MobileNetV3 preprocessing (CATEGORICAL - 2 classes)
+        smoke_pred = smoke_model.predict(image_v3, verbose=0)[0]  # Returns [smoke_prob, no_smoke_prob]
         
-        # DEBUG: Log raw probability to understand model behavior
-        print(f"📊 RAW SMOKE PROBABILITY: {smoke_pred:.6f}")
+        # Model trained with explicit class order: 0=Smoke, 1=No_Smoke
+        smoke_prob = float(smoke_pred[0])  # Probability of Smoke (class 0)
+        no_smoke_prob = float(smoke_pred[1])  # Probability of No_Smoke (class 1)
         
-        # Based on testing: high values (>0.5) = Smoke, low values (<0.5) = No Smoke
-        # This is the standard binary classification interpretation
-        if smoke_pred > 0.5:
+        print(f"📊 Smoke probabilities: Smoke={smoke_prob:.4f}, No_Smoke={no_smoke_prob:.4f}")
+        
+        # Choose class with higher probability
+        if smoke_prob > no_smoke_prob:
             smoke_result = 'Smoke'
-            smoke_confidence = float(smoke_pred) * 100
+            smoke_confidence = smoke_prob * 100
         else:
             smoke_result = 'No Smoke'
-            smoke_confidence = float(1 - smoke_pred) * 100
+            smoke_confidence = no_smoke_prob * 100
         
         print(f"🔥 Smoke Detection: {smoke_result} ({smoke_confidence:.2f}%)")
 
@@ -528,16 +530,19 @@ def update_report(report_id):
                 for i in range(len(STRUCTURE_CLASSES))
             }
 
-            # Binary classification: get single probability value
-            smoke_pred = smoke_model.predict(image, verbose=0)[0][0]
+            # Categorical classification: returns [smoke_prob, no_smoke_prob]
+            smoke_pred = smoke_model.predict(image, verbose=0)[0]
             
-            # INVERTED: Model outputs LOW values for smoke, HIGH values for no smoke
-            if smoke_pred < 0.5:
+            # Explicit class order: 0=Smoke, 1=No_Smoke
+            smoke_prob = float(smoke_pred[0])
+            no_smoke_prob = float(smoke_pred[1])
+            
+            if smoke_prob > no_smoke_prob:
                 smoke_result = 'Smoke'
-                smoke_confidence = float(1 - smoke_pred) * 100
+                smoke_confidence = smoke_prob * 100
             else:
                 smoke_result = 'No Smoke'
-                smoke_confidence = float(smoke_pred) * 100
+                smoke_confidence = no_smoke_prob * 100
             
             alarm_level = determine_alarm_level(num_structures)
             

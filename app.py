@@ -3,7 +3,7 @@ import tensorflow as tf
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.image import img_to_array
 from flask_cors import CORS
-# ✅ Import BOTH preprocessing functions for different models
+# ✅ Import preprocessing functions for different models
 import tensorflow.keras.applications.mobilenet_v2 as mobilenet_v2
 import tensorflow.keras.applications.mobilenet_v3 as mobilenet_v3
 import numpy as np
@@ -284,7 +284,7 @@ def save_report_to_supabase(image_url, prediction_json, geotag_location=None, ca
 
 @app.route('/')
 def home():
-    return "Fire Detection API is running! (Fire + Structure + Smoke detection active)"
+    return "Fire Detection API is running! (Fire: MobileNetV3-Large + Structure: MobileNetV2 + Smoke: MobileNetV3)"
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -292,13 +292,13 @@ def predict():
     
     # Lazy load models
     if fire_model is None:
-        print("Loading fire detection model...")
-        fire_model = load_model("fire_mobilenet_model_new.keras")
+        print("🔥 Loading fire detection model (MobileNetV3-Large)...")
+        fire_model = load_model("fire_mobilenetv3_model.keras")
     if structure_model is None:
-        print("Loading structure classification model...")
+        print("🏗️ Loading structure classification model (MobileNetV2)...")
         structure_model = load_model("structure_material_classifier.keras")
     if smoke_model is None:
-        print("Loading smoke detection model...")
+        print("💨 Loading smoke detection model (MobileNetV3)...")
         smoke_model = load_model("smoke_detection_model.keras")
 
     if 'image' not in request.files:
@@ -335,25 +335,22 @@ def predict():
         image_v3 = mobilenet_v3.preprocess_input(image_array.copy())
         image_v3 = np.expand_dims(image_v3, axis=0)
 
-        # ✅ Fire prediction with MobileNetV3 preprocessing (CATEGORICAL - 2 classes)
-        fire_pred = fire_model.predict(image_v3, verbose=0)[0]  # Returns [no_fire_prob, fire_prob]
+        # ✅ Fire prediction with MobileNetV3 preprocessing (BINARY - sigmoid output)
+        fire_pred = fire_model.predict(image_v3, verbose=0)[0][0]  # Returns single probability
         
-        # CORRECTED: Model actually learned 0=No_Fire, 1=Fire (alphabetically)
-        no_fire_prob = float(fire_pred[0])  # Probability of No_Fire (class 0)
-        fire_prob = float(fire_pred[1])  # Probability of Fire (class 1)
+        # MobileNetV3-Large model uses BINARY classification (sigmoid)
+        # Output > 0.5 = Fire, Output <= 0.5 = No Fire
+        fire_confidence = float(fire_pred) * 100
         
-        print(f"📊 Fire probabilities: Fire={fire_prob:.4f}, No_Fire={no_fire_prob:.4f}")
-        
-        # Choose class with higher probability
-        if fire_prob > no_fire_prob:
+        if fire_pred > 0.5:
             fire_result = 'Fire'
-            fire_confidence = fire_prob * 100
+            print(f"🔥 Fire Detection: {fire_result} ({fire_confidence:.2f}%)")
         else:
             fire_result = 'No Fire'
-            fire_confidence = no_fire_prob * 100
-        
-        print(f"🔥 Fire Detection: {fire_result} ({fire_confidence:.2f}%)")
+            fire_confidence = (1 - float(fire_pred)) * 100  # Invert for No Fire confidence
+            print(f"🔥 Fire Detection: {fire_result} ({fire_confidence:.2f}%)")
 
+        # ✅ Structure prediction with MobileNetV2 preprocessing (CATEGORICAL - 3 classes)
         structure_pred = structure_model.predict(image_v2, verbose=0)[0]
         structure_result = STRUCTURE_CLASSES[np.argmax(structure_pred)]
         structure_confidence = float(np.max(structure_pred)) * 100
@@ -362,15 +359,15 @@ def predict():
             STRUCTURE_CLASSES[i]: f"{float(structure_pred[i]) * 100:.2f}%" 
             for i in range(len(STRUCTURE_CLASSES))
         }
+        
+        print(f"🏗️ Structure Detection: {structure_result} ({structure_confidence:.2f}%)")
 
-        # ✅ Smoke detection uses MobileNetV3 preprocessing (CATEGORICAL - 2 classes)
+        # ✅ Smoke detection with MobileNetV3 preprocessing (CATEGORICAL - 2 classes)
         smoke_pred = smoke_model.predict(image_v3, verbose=0)[0]  # Returns [smoke_prob, no_smoke_prob]
         
         # Model trained with explicit class order: 0=Smoke, 1=No_Smoke
         smoke_prob = float(smoke_pred[0])  # Probability of Smoke (class 0)
         no_smoke_prob = float(smoke_pred[1])  # Probability of No_Smoke (class 1)
-        
-        print(f"📊 Smoke probabilities: Smoke={smoke_prob:.4f}, No_Smoke={no_smoke_prob:.4f}")
         
         # Choose class with higher probability
         if smoke_prob > no_smoke_prob:
@@ -380,7 +377,7 @@ def predict():
             smoke_result = 'No Smoke'
             smoke_confidence = no_smoke_prob * 100
         
-        print(f"🔥 Smoke Detection: {smoke_result} ({smoke_confidence:.2f}%)")
+        print(f"💨 Smoke Detection: {smoke_result} ({smoke_confidence:.2f}%)")
 
         alarm_level = determine_alarm_level(num_structures)
 
@@ -414,7 +411,9 @@ def predict():
         })
 
     except Exception as e:
-        print(f"Error during prediction: {str(e)}")
+        print(f"❌ Error during prediction: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 
@@ -487,7 +486,7 @@ def update_report(report_id):
             file = request.files['image']
             cause_of_fire = request.form.get('cause_of_fire')
             num_structures = request.form.get('number_of_structures_on_fire')
-            status = request.form.get('status')  # NEW: Get status from form data
+            status = request.form.get('status')  # Get status from form data
             
             # Handle location updates in multipart requests
             geotag_location = request.form.get('geotag_location')
@@ -529,25 +528,23 @@ def update_report(report_id):
             # Load models if needed
             global fire_model, structure_model, smoke_model
             if fire_model is None:
-                fire_model = load_model("fire_mobilenet_model_new.keras")
+                fire_model = load_model("fire_mobilenetv3_model.keras")
             if structure_model is None:
                 structure_model = load_model("structure_material_classifier.keras")
             if smoke_model is None:
                 smoke_model = load_model("smoke_detection_model.keras")
             
-            # Fire prediction with MobileNetV3 preprocessing (CATEGORICAL)
-            fire_pred = fire_model.predict(image_v3, verbose=0)[0]
-            no_fire_prob = float(fire_pred[0])  # Probability of No_Fire (class 0)
-            fire_prob = float(fire_pred[1])  # Probability of Fire (class 1)
+            # ✅ Fire prediction with MobileNetV3 preprocessing (BINARY - sigmoid)
+            fire_pred = fire_model.predict(image_v3, verbose=0)[0][0]
+            fire_confidence = float(fire_pred) * 100
             
-            if fire_prob > no_fire_prob:
+            if fire_pred > 0.5:
                 fire_result = 'Fire'
-                fire_confidence = fire_prob * 100
             else:
                 fire_result = 'No Fire'
-                fire_confidence = no_fire_prob * 100
+                fire_confidence = (1 - float(fire_pred)) * 100
 
-            # Structure prediction with MobileNetV2 preprocessing
+            # ✅ Structure prediction with MobileNetV2 preprocessing (CATEGORICAL)
             structure_pred = structure_model.predict(image_v2, verbose=0)[0]
             structure_result = STRUCTURE_CLASSES[np.argmax(structure_pred)]
             structure_confidence = float(np.max(structure_pred)) * 100
@@ -558,7 +555,7 @@ def update_report(report_id):
                 for i in range(len(STRUCTURE_CLASSES))
             }
 
-            # Smoke prediction with MobileNetV3 preprocessing (CATEGORICAL)
+            # ✅ Smoke prediction with MobileNetV3 preprocessing (CATEGORICAL)
             smoke_pred = smoke_model.predict(image_v3, verbose=0)[0]
             smoke_prob = float(smoke_pred[0])
             no_smoke_prob = float(smoke_pred[1])
@@ -596,12 +593,12 @@ def update_report(report_id):
                 'prediction': fire_result,
                 'confidence': f"{fire_confidence:.2f}%",
                 'structure': structure_result,
-                'structure_confidence': f"{structure_confidence:.2f}%",  # Added structure confidence
-                'structure_probabilities': structure_probabilities,  # Added detailed probabilities
+                'structure_confidence': f"{structure_confidence:.2f}%",
+                'structure_probabilities': structure_probabilities,
                 'recommended_alarm_level': alarm_level,
                 'smoke_detection': smoke_result,
                 'smoke_confidence': f"{smoke_confidence:.2f}%",
-                'status': final_status  # NEW: Include status
+                'status': final_status
             }
             
             # Add location fields if provided
@@ -631,7 +628,7 @@ def update_report(report_id):
                     update_data['number_of_structures_on_fire'] = None
                     update_data['recommended_alarm_level'] = "Unknown - structure count not provided"
             
-            # NEW: Handle status updates in JSON requests
+            # Handle status updates in JSON requests
             if 'status' in data:
                 valid_statuses = ['On Going', 'Under Control', 'Fire Out', 'False Alarm']
                 if data['status'] in valid_statuses:
@@ -668,10 +665,11 @@ def update_report(report_id):
         updated = supabase.table("fire_reports").select("*").eq('id', report_id).execute()
         return jsonify(updated.data[0] if updated.data else {})
     except Exception as e:
-        print(f"Error updating report: {str(e)}")
+        print(f"❌ Error updating report: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
-    
 # ENHANCED BACKEND CANCEL REPORT ENDPOINT
 @app.route('/cancel_report/<report_id>', methods=['POST'])
 def cancel_report(report_id):

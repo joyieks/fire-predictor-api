@@ -336,11 +336,11 @@ def predict():
         image_v3 = np.expand_dims(image_v3, axis=0)
 
         # ✅ Fire prediction with MobileNetV3 preprocessing (CATEGORICAL - 2 classes)
-        fire_pred = fire_model.predict(image_v3, verbose=0)[0]  # Returns [fire_prob, no_fire_prob]
+        fire_pred = fire_model.predict(image_v3, verbose=0)[0]  # Returns [no_fire_prob, fire_prob]
         
-        # Model trained with explicit class order: 0=Fire, 1=No_Fire
-        fire_prob = float(fire_pred[0])  # Probability of Fire (class 0)
-        no_fire_prob = float(fire_pred[1])  # Probability of No_Fire (class 1)
+        # CORRECTED: Model actually learned 0=No_Fire, 1=Fire (alphabetically)
+        no_fire_prob = float(fire_pred[0])  # Probability of No_Fire (class 0)
+        fire_prob = float(fire_pred[1])  # Probability of Fire (class 1)
         
         print(f"📊 Fire probabilities: Fire={fire_prob:.4f}, No_Fire={no_fire_prob:.4f}")
         
@@ -537,8 +537,8 @@ def update_report(report_id):
             
             # Fire prediction with MobileNetV3 preprocessing (CATEGORICAL)
             fire_pred = fire_model.predict(image_v3, verbose=0)[0]
-            fire_prob = float(fire_pred[0])  # Probability of Fire
-            no_fire_prob = float(fire_pred[1])  # Probability of No_Fire
+            no_fire_prob = float(fire_pred[0])  # Probability of No_Fire (class 0)
+            fire_prob = float(fire_pred[1])  # Probability of Fire (class 1)
             
             if fire_prob > no_fire_prob:
                 fire_result = 'Fire'

@@ -293,7 +293,7 @@ def predict():
     # Lazy load models
     if fire_model is None:
         print("Loading fire detection model...")
-        fire_model = load_model("fire_mobilenet_model.keras")
+        fire_model = load_model("fire_mobilenet_model_new.keras")
     if structure_model is None:
         print("Loading structure classification model...")
         structure_model = load_model("structure_material_classifier.keras")
@@ -327,18 +327,32 @@ def predict():
         image_array = img_to_array(image_raw)
         
         # ✅ Create separate preprocessed versions for each model
-        # Fire and Structure models: trained with MobileNetV2
+        # Structure model: trained with MobileNetV2
         image_v2 = mobilenet_v2.preprocess_input(image_array.copy())
         image_v2 = np.expand_dims(image_v2, axis=0)
         
-        # Smoke model: trained with MobileNetV3
+        # Fire and Smoke models: trained with MobileNetV3
         image_v3 = mobilenet_v3.preprocess_input(image_array.copy())
         image_v3 = np.expand_dims(image_v3, axis=0)
 
-        # Make predictions with correct preprocessing for each model
-        fire_pred = fire_model.predict(image_v2, verbose=0)[0]
-        fire_result = FIRE_CLASSES[np.argmax(fire_pred)]
-        fire_confidence = float(np.max(fire_pred)) * 100
+        # ✅ Fire prediction with MobileNetV3 preprocessing (CATEGORICAL - 2 classes)
+        fire_pred = fire_model.predict(image_v3, verbose=0)[0]  # Returns [fire_prob, no_fire_prob]
+        
+        # Model trained with explicit class order: 0=Fire, 1=No_Fire
+        fire_prob = float(fire_pred[0])  # Probability of Fire (class 0)
+        no_fire_prob = float(fire_pred[1])  # Probability of No_Fire (class 1)
+        
+        print(f"📊 Fire probabilities: Fire={fire_prob:.4f}, No_Fire={no_fire_prob:.4f}")
+        
+        # Choose class with higher probability
+        if fire_prob > no_fire_prob:
+            fire_result = 'Fire'
+            fire_confidence = fire_prob * 100
+        else:
+            fire_result = 'No Fire'
+            fire_confidence = no_fire_prob * 100
+        
+        print(f"🔥 Fire Detection: {fire_result} ({fire_confidence:.2f}%)")
 
         structure_pred = structure_model.predict(image_v2, verbose=0)[0]
         structure_result = STRUCTURE_CLASSES[np.argmax(structure_pred)]
@@ -499,28 +513,42 @@ def update_report(report_id):
             
             # Re-run AI models on new image
             file.stream.seek(0)
-            image = Image.open(io.BytesIO(file.read())).convert('RGB')
-            image = image.resize((224, 224))
-            image = img_to_array(image)
-            image = preprocess_input(image)
-            image = np.expand_dims(image, axis=0)
+            image_raw = Image.open(io.BytesIO(file.read())).convert('RGB')
+            image_raw = image_raw.resize((224, 224))
+            image_array = img_to_array(image_raw)
+            
+            # Create separate preprocessed versions for each model
+            # Structure model: MobileNetV2 preprocessing
+            image_v2 = mobilenet_v2.preprocess_input(image_array.copy())
+            image_v2 = np.expand_dims(image_v2, axis=0)
+            
+            # Fire and Smoke models: MobileNetV3 preprocessing
+            image_v3 = mobilenet_v3.preprocess_input(image_array.copy())
+            image_v3 = np.expand_dims(image_v3, axis=0)
             
             # Load models if needed
             global fire_model, structure_model, smoke_model
             if fire_model is None:
-                fire_model = load_model("fire_mobilenet_model.keras")
+                fire_model = load_model("fire_mobilenet_model_new.keras")
             if structure_model is None:
                 structure_model = load_model("structure_material_classifier.keras")
             if smoke_model is None:
                 smoke_model = load_model("smoke_detection_model.keras")
             
-            # Make new predictions
-            fire_pred = fire_model.predict(image, verbose=0)[0]
-            fire_result = FIRE_CLASSES[np.argmax(fire_pred)]
-            fire_confidence = float(np.max(fire_pred)) * 100
+            # Fire prediction with MobileNetV3 preprocessing (CATEGORICAL)
+            fire_pred = fire_model.predict(image_v3, verbose=0)[0]
+            fire_prob = float(fire_pred[0])  # Probability of Fire
+            no_fire_prob = float(fire_pred[1])  # Probability of No_Fire
+            
+            if fire_prob > no_fire_prob:
+                fire_result = 'Fire'
+                fire_confidence = fire_prob * 100
+            else:
+                fire_result = 'No Fire'
+                fire_confidence = no_fire_prob * 100
 
-            # Structure prediction with confidence percentages
-            structure_pred = structure_model.predict(image, verbose=0)[0]
+            # Structure prediction with MobileNetV2 preprocessing
+            structure_pred = structure_model.predict(image_v2, verbose=0)[0]
             structure_result = STRUCTURE_CLASSES[np.argmax(structure_pred)]
             structure_confidence = float(np.max(structure_pred)) * 100
             
@@ -530,10 +558,8 @@ def update_report(report_id):
                 for i in range(len(STRUCTURE_CLASSES))
             }
 
-            # Categorical classification: returns [smoke_prob, no_smoke_prob]
-            smoke_pred = smoke_model.predict(image, verbose=0)[0]
-            
-            # Explicit class order: 0=Smoke, 1=No_Smoke
+            # Smoke prediction with MobileNetV3 preprocessing (CATEGORICAL)
+            smoke_pred = smoke_model.predict(image_v3, verbose=0)[0]
             smoke_prob = float(smoke_pred[0])
             no_smoke_prob = float(smoke_pred[1])
             

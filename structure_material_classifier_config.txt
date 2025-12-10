@@ -1,0 +1,8 @@
+accuracy=0.8824
+preprocessing=rescale_255_then_normalize
+input_size=224
+classes=concrete,metal,wood
+class_indices={'concrete': 0, 'metal': 1, 'wood': 2}
+concrete_accuracy=84.62
+metal_accuracy=90.91
+wood_accuracy=90.00

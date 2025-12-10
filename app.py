@@ -297,6 +297,16 @@ def predict():
     if structure_model is None:
         print("🏗️ Loading structure classification model (MobileNetV2)...")
         structure_model = load_model("structure_material_classifier.keras")
+
+          # Load config ONCE when model is first loaded
+        try:
+            with open('structure_material_classifier_config.txt', 'r') as f:
+                print("📋 Structure Model Config:")
+                print(f.read())
+        except FileNotFoundError:
+            print("⚠️ No config file found for structure model")
+        except Exception as e:
+            print(f"⚠️ Error reading config: {e}")
     if smoke_model is None:
         print("💨 Loading smoke detection model (MobileNetV3)...")
         smoke_model = load_model("smoke_detection_model.keras")
@@ -344,6 +354,9 @@ def predict():
         # Structure model: has built-in preprocessing, just needs [0, 255] input
         image_structure = image_array.copy()  # Keep in [0, 255] range
         image_structure = np.expand_dims(image_structure, axis=0)
+
+        # In app.py, after loading structure_model:
+     
         
         # Smoke model: trained with MobileNetV3 preprocessing
         image_smoke = mobilenet_v3.preprocess_input(image_array.copy())
@@ -407,6 +420,13 @@ def predict():
         # STRUCTURE PREDICTION (CATEGORICAL - 3 classes)
         # ============================================================================
         structure_pred = structure_model.predict(image_structure, verbose=0)[0]
+
+        # ADD DEBUGGING
+        print(f"🔍 Structure raw predictions:")
+        print(f"   Concrete: {structure_pred[0]*100:.2f}%")
+        print(f"   Metal: {structure_pred[1]*100:.2f}%")
+        print(f"   Wood: {structure_pred[2]*100:.2f}%")
+
         structure_result = STRUCTURE_CLASSES[np.argmax(structure_pred)]
         structure_confidence = float(np.max(structure_pred)) * 100
         

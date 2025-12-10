@@ -341,7 +341,8 @@ def predict():
         image_fire = np.expand_dims(image_fire, axis=0)  # Shape: (1, 224, 224, 3)
         
         # Structure model: trained with MobileNetV2 preprocessing
-        image_structure = mobilenet_v2.preprocess_input(image_array.copy())
+        # Structure model: has built-in preprocessing, just needs [0, 255] input
+        image_structure = image_array.copy()  # Keep in [0, 255] range
         image_structure = np.expand_dims(image_structure, axis=0)
         
         # Smoke model: trained with MobileNetV3 preprocessing
@@ -586,9 +587,10 @@ def update_report(report_id):
             image_fire = np.expand_dims(image_fire, axis=0)  # Shape: (1, 224, 224, 3)
             
             # Structure model: trained with MobileNetV2 preprocessing
-            image_structure = mobilenet_v2.preprocess_input(image_array.copy())
+           
+            image_structure = image_array.copy()  # Keep in [0, 255] range
             image_structure = np.expand_dims(image_structure, axis=0)
-            
+
             # Smoke model: trained with MobileNetV3 preprocessing
             image_smoke = mobilenet_v3.preprocess_input(image_array.copy())
             image_smoke = np.expand_dims(image_smoke, axis=0)

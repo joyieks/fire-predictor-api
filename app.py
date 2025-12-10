@@ -350,9 +350,14 @@ def predict():
         image_fire = image_array.copy() / 255.0  # [0, 1] range
         image_fire = np.expand_dims(image_fire, axis=0)  # Shape: (1, 224, 224, 3)
         
-        # Structure model: trained with MobileNetV2 preprocessing
-        # Structure model: has built-in preprocessing, just needs [0, 255] input
-        image_structure = image_array.copy()  # Keep in [0, 255] range
+        # ============================================================================
+        # STRUCTURE MODEL PREPROCESSING
+        # ⚠️ CRITICAL: Structure model was trained with MobileNetV2 preprocessing!
+        # Training used: rescale=1./255 THEN MobileNetV2 normalization [-1, 1]
+        # Config: preprocessing=rescale_255_then_normalize
+        # ============================================================================
+        image_structure = image_array.copy() / 255.0  # First: [0, 1] range
+        image_structure = mobilenet_v2.preprocess_input(image_structure * 255.0)  # Then: normalize to [-1, 1]
         image_structure = np.expand_dims(image_structure, axis=0)
 
         # In app.py, after loading structure_model:
@@ -606,9 +611,14 @@ def update_report(report_id):
             image_fire = image_array.copy() / 255.0  # [0, 1] range
             image_fire = np.expand_dims(image_fire, axis=0)  # Shape: (1, 224, 224, 3)
             
-            # Structure model: trained with MobileNetV2 preprocessing
-           
-            image_structure = image_array.copy()  # Keep in [0, 255] range
+            # ============================================================================
+            # STRUCTURE MODEL PREPROCESSING
+            # ⚠️ CRITICAL: Structure model was trained with MobileNetV2 preprocessing!
+            # Training used: rescale=1./255 THEN MobileNetV2 normalization [-1, 1]
+            # Config: preprocessing=rescale_255_then_normalize
+            # ============================================================================
+            image_structure = image_array.copy() / 255.0  # First: [0, 1] range
+            image_structure = mobilenet_v2.preprocess_input(image_structure * 255.0)  # Then: normalize to [-1, 1]
             image_structure = np.expand_dims(image_structure, axis=0)
 
             # Smoke model: trained with MobileNetV3 preprocessing

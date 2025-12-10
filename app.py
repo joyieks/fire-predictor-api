@@ -568,55 +568,119 @@ def update_report(report_id):
             # Upload new image
             image_url = upload_image_to_supabase(file)
             
-            # Re-run AI models on new image
+            # ============================================================================
+            # LOAD AND PREPROCESS IMAGE
+            # ============================================================================
             file.stream.seek(0)
             image_raw = Image.open(io.BytesIO(file.read())).convert('RGB')
-            image_raw = image_raw.resize((224, 224))
-            image_array = img_to_array(image_raw)
+            image_raw = image_raw.resize((224, 224))  # Resize to model input size
+            image_array = img_to_array(image_raw)  # Shape: (224, 224, 3), range [0, 255]
             
-            # Create separate preprocessed versions for each model
-            # Structure model: MobileNetV2 preprocessing
-            image_v2 = mobilenet_v2.preprocess_input(image_array.copy())
-            image_v2 = np.expand_dims(image_v2, axis=0)
+            # ============================================================================
+            # FIRE MODEL PREPROCESSING
+            # ⚠️ CRITICAL: Fire model was trained with SIMPLE /255 RESCALING ONLY!
+            # DO NOT use mobilenet_v3.preprocess_input() - it will break predictions!
+            # Training used: ImageDataGenerator(rescale=1./255)
+            # ============================================================================
+            image_fire = image_array.copy() / 255.0  # [0, 1] range
+            image_fire = np.expand_dims(image_fire, axis=0)  # Shape: (1, 224, 224, 3)
             
-            # Fire and Smoke models: MobileNetV3 preprocessing
-            image_v3 = mobilenet_v3.preprocess_input(image_array.copy())
-            image_v3 = np.expand_dims(image_v3, axis=0)
+            # Structure model: trained with MobileNetV2 preprocessing
+            image_structure = mobilenet_v2.preprocess_input(image_array.copy())
+            image_structure = np.expand_dims(image_structure, axis=0)
+            
+            # Smoke model: trained with MobileNetV3 preprocessing
+            image_smoke = mobilenet_v3.preprocess_input(image_array.copy())
+            image_smoke = np.expand_dims(image_smoke, axis=0)
             
             # Load models if needed
             global fire_model, structure_model, smoke_model
             if fire_model is None:
+                print("🔥 Loading fire detection model (MobileNetV3-Large)...")
                 fire_model = load_model("fire_mobilenetv3_model.keras")
             if structure_model is None:
+                print("🏗️ Loading structure classification model (MobileNetV2)...")
                 structure_model = load_model("structure_material_classifier.keras")
             if smoke_model is None:
+                print("💨 Loading smoke detection model (MobileNetV3)...")
                 smoke_model = load_model("smoke_detection_model.keras")
             
-            # ✅ Fire prediction with MobileNetV3 preprocessing (BINARY - sigmoid)
-            fire_pred = fire_model.predict(image_v3, verbose=0)[0][0]
-            fire_confidence = float(fire_pred) * 100
+            # ============================================================================
+            # FIRE PREDICTION
+            # ============================================================================
+            fire_pred = fire_model.predict(image_fire, verbose=0)[0][0]  # Single float value
             
-            if fire_pred > 0.5:
-                fire_result = 'Fire'
+            # Load configuration file (created during training)
+            try:
+                with open('fire_mobilenetv3_model_config.txt', 'r') as f:
+                    config = {}
+                    for line in f:
+                        if '=' in line:
+                            key, value = line.strip().split('=')
+                            config[key] = value
+                    
+                    threshold = float(config.get('threshold', 0.5))
+                    fire_class = int(config.get('fire_class', 0))
+                    
+                print(f"📋 Config loaded - Threshold: {threshold:.3f}, Fire class: {fire_class}")
+            except Exception as e:
+                print(f"⚠️  Could not load config file: {e}")
+                print("   Using defaults: threshold=0.5, fire_class=0")
+                threshold = 0.5
+                fire_class = 0
+            
+            print(f"🔥 Raw model output: {fire_pred:.4f}")
+            
+            # Interpret prediction based on which class is fire
+            # Binary classification outputs probability of class 1
+            # fire_class=0 means: fire is class 0, so LOW output = fire
+            # fire_class=1 means: fire is class 1, so HIGH output = fire
+            
+            if fire_class == 0:
+                # Fire is class 0
+                # Model outputs probability of class 1 (no fire)
+                # So if output < threshold, predict Fire (class 0)
+                if fire_pred < threshold:
+                    fire_result = 'Fire'
+                    fire_confidence = (1 - fire_pred) * 100  # Confidence in Fire (class 0)
+                else:
+                    fire_result = 'No Fire'
+                    fire_confidence = fire_pred * 100  # Confidence in No Fire (class 1)
             else:
-                fire_result = 'No Fire'
-                fire_confidence = (1 - float(fire_pred)) * 100
+                # Fire is class 1
+                # Model outputs probability of class 1 (fire)
+                # So if output > threshold, predict Fire (class 1)
+                if fire_pred > threshold:
+                    fire_result = 'Fire'
+                    fire_confidence = fire_pred * 100  # Confidence in Fire (class 1)
+                else:
+                    fire_result = 'No Fire'
+                    fire_confidence = (1 - fire_pred) * 100  # Confidence in No Fire (class 0)
+            
+            print(f"🔥 Fire Detection: {fire_result} (Confidence: {fire_confidence:.2f}%)")
 
-            # ✅ Structure prediction with MobileNetV2 preprocessing (CATEGORICAL)
-            structure_pred = structure_model.predict(image_v2, verbose=0)[0]
+            # ============================================================================
+            # STRUCTURE PREDICTION (CATEGORICAL - 3 classes)
+            # ============================================================================
+            structure_pred = structure_model.predict(image_structure, verbose=0)[0]
             structure_result = STRUCTURE_CLASSES[np.argmax(structure_pred)]
             structure_confidence = float(np.max(structure_pred)) * 100
             
-            # Get all structure probabilities for detailed breakdown
             structure_probabilities = {
                 STRUCTURE_CLASSES[i]: f"{float(structure_pred[i]) * 100:.2f}%" 
                 for i in range(len(STRUCTURE_CLASSES))
             }
+            
+            print(f"🏗️ Structure Detection: {structure_result} ({structure_confidence:.2f}%)")
 
-            # ✅ Smoke prediction with MobileNetV3 preprocessing (CATEGORICAL)
-            smoke_pred = smoke_model.predict(image_v3, verbose=0)[0]
-            smoke_prob = float(smoke_pred[0])
-            no_smoke_prob = float(smoke_pred[1])
+            # ============================================================================
+            # SMOKE DETECTION (CATEGORICAL - 2 classes)
+            # ============================================================================
+            smoke_pred = smoke_model.predict(image_smoke, verbose=0)[0]
+            
+            # Assuming class order: 0=Smoke, 1=No_Smoke
+            smoke_prob = float(smoke_pred[0])  # Probability of Smoke
+            no_smoke_prob = float(smoke_pred[1])  # Probability of No Smoke
             
             if smoke_prob > no_smoke_prob:
                 smoke_result = 'Smoke'
@@ -625,6 +689,11 @@ def update_report(report_id):
                 smoke_result = 'No Smoke'
                 smoke_confidence = no_smoke_prob * 100
             
+            print(f"💨 Smoke Detection: {smoke_result} ({smoke_confidence:.2f}%)")
+            
+            # ============================================================================
+            # DETERMINE STATUS AND ALARM LEVEL
+            # ============================================================================
             alarm_level = determine_alarm_level(num_structures)
             
             # Determine status - use provided status if valid, otherwise auto-determine

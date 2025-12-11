@@ -298,7 +298,7 @@ def predict():
         print("🏗️ Loading structure classification model (MobileNetV2)...")
         structure_model = load_model("structure_material_classifier.keras")
 
-          # Load config ONCE when model is first loaded
+        # Load config ONCE when model is first loaded
         try:
             with open('structure_material_classifier_config.txt', 'r') as f:
                 print("📋 Structure Model Config:")
@@ -308,8 +308,8 @@ def predict():
         except Exception as e:
             print(f"⚠️ Error reading config: {e}")
     if smoke_model is None:
-        print("💨 Loading smoke detection model (MobileNetV3)...")
-        smoke_model = load_model("smoke_detection_model.keras")
+        print("💨 Loading smoke detection model (MobileNetV3-Large)...")
+        smoke_model = load_model("smoke_mobilenetv3_model.keras")
 
     if 'image' not in request.files:
         return jsonify({'error': 'No image uploaded'}), 400
@@ -359,13 +359,16 @@ def predict():
         image_structure = image_array.copy() / 255.0  # First: [0, 1] range
         image_structure = mobilenet_v2.preprocess_input(image_structure * 255.0)  # Then: normalize to [-1, 1]
         image_structure = np.expand_dims(image_structure, axis=0)
-
-        # In app.py, after loading structure_model:
-     
         
-        # Smoke model: trained with MobileNetV3 preprocessing
-        image_smoke = mobilenet_v3.preprocess_input(image_array.copy())
-        image_smoke = np.expand_dims(image_smoke, axis=0)
+        # ============================================================================
+        # SMOKE MODEL PREPROCESSING
+        # ⚠️ CRITICAL: Smoke model was trained with SIMPLE /255 RESCALING ONLY!
+        # Same as fire model - DO NOT use mobilenet_v3.preprocess_input()!
+        # Training used: ImageDataGenerator(rescale=1./255)
+        # Model uses BINARY classification (sigmoid) not categorical (softmax)
+        # ============================================================================
+        image_smoke = image_array.copy() / 255.0  # [0, 1] range
+        image_smoke = np.expand_dims(image_smoke, axis=0)  # Shape: (1, 224, 224, 3)
 
         # ============================================================================
         # FIRE PREDICTION
@@ -384,14 +387,14 @@ def predict():
                 threshold = float(config.get('threshold', 0.5))
                 fire_class = int(config.get('fire_class', 0))
                 
-            print(f"📋 Config loaded - Threshold: {threshold:.3f}, Fire class: {fire_class}")
+            print(f"📋 Fire config loaded - Threshold: {threshold:.3f}, Fire class: {fire_class}")
         except Exception as e:
-            print(f"⚠️  Could not load config file: {e}")
+            print(f"⚠️  Could not load fire config file: {e}")
             print("   Using defaults: threshold=0.5, fire_class=0")
             threshold = 0.5
             fire_class = 0
         
-        print(f"🔥 Raw model output: {fire_pred:.4f}")
+        print(f"🔥 Raw fire model output: {fire_pred:.4f}")
         
         # Interpret prediction based on which class is fire
         # Binary classification outputs probability of class 1
@@ -443,22 +446,54 @@ def predict():
         print(f"🏗️ Structure Detection: {structure_result} ({structure_confidence:.2f}%)")
 
         # ============================================================================
-        # SMOKE DETECTION (CATEGORICAL - 2 classes)
+        # SMOKE PREDICTION (BINARY - same logic as fire model)
         # ============================================================================
-        smoke_pred = smoke_model.predict(image_smoke, verbose=0)[0]
+        smoke_pred = smoke_model.predict(image_smoke, verbose=0)[0][0]  # Single float value
         
-        # Assuming class order: 0=Smoke, 1=No_Smoke
-        smoke_prob = float(smoke_pred[0])  # Probability of Smoke
-        no_smoke_prob = float(smoke_pred[1])  # Probability of No Smoke
+        # Load smoke model config
+        try:
+            with open('smoke_mobilenetv3_model_config.txt', 'r') as f:
+                smoke_config = {}
+                for line in f:
+                    if '=' in line:
+                        key, value = line.strip().split('=')
+                        smoke_config[key] = value
+                
+                smoke_threshold = float(smoke_config.get('threshold', 0.5))
+                smoke_class = int(smoke_config.get('smoke_class', 0))
+                
+            print(f"📋 Smoke config loaded - Threshold: {smoke_threshold:.3f}, Smoke class: {smoke_class}")
+        except Exception as e:
+            print(f"⚠️  Could not load smoke config file: {e}")
+            print("   Using defaults: threshold=0.5, smoke_class=0")
+            smoke_threshold = 0.5
+            smoke_class = 0
         
-        if smoke_prob > no_smoke_prob:
-            smoke_result = 'Smoke'
-            smoke_confidence = smoke_prob * 100
+        print(f"💨 Raw smoke model output: {smoke_pred:.4f}")
+        
+        # Interpret prediction based on which class is smoke
+        if smoke_class == 0:
+            # Smoke is class 0
+            # Model outputs probability of class 1 (no smoke)
+            # So if output < threshold, predict Smoke (class 0)
+            if smoke_pred < smoke_threshold:
+                smoke_result = 'Smoke'
+                smoke_confidence = (1 - smoke_pred) * 100  # Confidence in Smoke (class 0)
+            else:
+                smoke_result = 'No Smoke'
+                smoke_confidence = smoke_pred * 100  # Confidence in No Smoke (class 1)
         else:
-            smoke_result = 'No Smoke'
-            smoke_confidence = no_smoke_prob * 100
+            # Smoke is class 1
+            # Model outputs probability of class 1 (smoke)
+            # So if output > threshold, predict Smoke (class 1)
+            if smoke_pred > smoke_threshold:
+                smoke_result = 'Smoke'
+                smoke_confidence = smoke_pred * 100  # Confidence in Smoke (class 1)
+            else:
+                smoke_result = 'No Smoke'
+                smoke_confidence = (1 - smoke_pred) * 100  # Confidence in No Smoke (class 0)
         
-        print(f"💨 Smoke Detection: {smoke_result} ({smoke_confidence:.2f}%)")
+        print(f"💨 Smoke Detection: {smoke_result} (Confidence: {smoke_confidence:.2f}%)")
 
         # ============================================================================
         # PREPARE RESPONSE
@@ -499,7 +534,6 @@ def predict():
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
-
 
 @app.route('/get_reports', methods=['GET'])
 def get_reports():
@@ -560,6 +594,8 @@ def get_reports():
 
 @app.route('/update_report/<report_id>', methods=['PUT'])
 def update_report(report_id):
+    global fire_model, structure_model, smoke_model
+    
     try:
         # Check if this is a multipart request (image update)
         if request.content_type and 'multipart/form-data' in request.content_type:
@@ -620,22 +656,37 @@ def update_report(report_id):
             image_structure = image_array.copy() / 255.0  # First: [0, 1] range
             image_structure = mobilenet_v2.preprocess_input(image_structure * 255.0)  # Then: normalize to [-1, 1]
             image_structure = np.expand_dims(image_structure, axis=0)
-
-            # Smoke model: trained with MobileNetV3 preprocessing
-            image_smoke = mobilenet_v3.preprocess_input(image_array.copy())
-            image_smoke = np.expand_dims(image_smoke, axis=0)
+            
+            # ============================================================================
+            # SMOKE MODEL PREPROCESSING
+            # ⚠️ CRITICAL: Smoke model was trained with SIMPLE /255 RESCALING ONLY!
+            # Same as fire model - DO NOT use mobilenet_v3.preprocess_input()!
+            # Training used: ImageDataGenerator(rescale=1./255)
+            # Model uses BINARY classification (sigmoid) not categorical (softmax)
+            # ============================================================================
+            image_smoke = image_array.copy() / 255.0  # [0, 1] range
+            image_smoke = np.expand_dims(image_smoke, axis=0)  # Shape: (1, 224, 224, 3)
             
             # Load models if needed
-            global fire_model, structure_model, smoke_model
             if fire_model is None:
                 print("🔥 Loading fire detection model (MobileNetV3-Large)...")
                 fire_model = load_model("fire_mobilenetv3_model.keras")
             if structure_model is None:
                 print("🏗️ Loading structure classification model (MobileNetV2)...")
                 structure_model = load_model("structure_material_classifier.keras")
+                
+                # Load config ONCE when model is first loaded
+                try:
+                    with open('structure_material_classifier_config.txt', 'r') as f:
+                        print("📋 Structure Model Config:")
+                        print(f.read())
+                except FileNotFoundError:
+                    print("⚠️ No config file found for structure model")
+                except Exception as e:
+                    print(f"⚠️ Error reading config: {e}")
             if smoke_model is None:
-                print("💨 Loading smoke detection model (MobileNetV3)...")
-                smoke_model = load_model("smoke_detection_model.keras")
+                print("💨 Loading smoke detection model (MobileNetV3-Large)...")
+                smoke_model = load_model("smoke_mobilenetv3_model.keras")
             
             # ============================================================================
             # FIRE PREDICTION
@@ -654,14 +705,14 @@ def update_report(report_id):
                     threshold = float(config.get('threshold', 0.5))
                     fire_class = int(config.get('fire_class', 0))
                     
-                print(f"📋 Config loaded - Threshold: {threshold:.3f}, Fire class: {fire_class}")
+                print(f"📋 Fire config loaded - Threshold: {threshold:.3f}, Fire class: {fire_class}")
             except Exception as e:
-                print(f"⚠️  Could not load config file: {e}")
+                print(f"⚠️  Could not load fire config file: {e}")
                 print("   Using defaults: threshold=0.5, fire_class=0")
                 threshold = 0.5
                 fire_class = 0
             
-            print(f"🔥 Raw model output: {fire_pred:.4f}")
+            print(f"🔥 Raw fire model output: {fire_pred:.4f}")
             
             # Interpret prediction based on which class is fire
             # Binary classification outputs probability of class 1
@@ -695,6 +746,13 @@ def update_report(report_id):
             # STRUCTURE PREDICTION (CATEGORICAL - 3 classes)
             # ============================================================================
             structure_pred = structure_model.predict(image_structure, verbose=0)[0]
+            
+            # ADD DEBUGGING
+            print(f"🔍 Structure raw predictions:")
+            print(f"   Concrete: {structure_pred[0]*100:.2f}%")
+            print(f"   Metal: {structure_pred[1]*100:.2f}%")
+            print(f"   Wood: {structure_pred[2]*100:.2f}%")
+            
             structure_result = STRUCTURE_CLASSES[np.argmax(structure_pred)]
             structure_confidence = float(np.max(structure_pred)) * 100
             
@@ -706,22 +764,54 @@ def update_report(report_id):
             print(f"🏗️ Structure Detection: {structure_result} ({structure_confidence:.2f}%)")
 
             # ============================================================================
-            # SMOKE DETECTION (CATEGORICAL - 2 classes)
+            # SMOKE PREDICTION (BINARY - same logic as fire model)
             # ============================================================================
-            smoke_pred = smoke_model.predict(image_smoke, verbose=0)[0]
+            smoke_pred = smoke_model.predict(image_smoke, verbose=0)[0][0]  # Single float value
             
-            # Assuming class order: 0=Smoke, 1=No_Smoke
-            smoke_prob = float(smoke_pred[0])  # Probability of Smoke
-            no_smoke_prob = float(smoke_pred[1])  # Probability of No Smoke
+            # Load smoke model config
+            try:
+                with open('smoke_mobilenetv3_model_config.txt', 'r') as f:
+                    smoke_config = {}
+                    for line in f:
+                        if '=' in line:
+                            key, value = line.strip().split('=')
+                            smoke_config[key] = value
+                    
+                    smoke_threshold = float(smoke_config.get('threshold', 0.5))
+                    smoke_class = int(smoke_config.get('smoke_class', 0))
+                    
+                print(f"📋 Smoke config loaded - Threshold: {smoke_threshold:.3f}, Smoke class: {smoke_class}")
+            except Exception as e:
+                print(f"⚠️  Could not load smoke config file: {e}")
+                print("   Using defaults: threshold=0.5, smoke_class=0")
+                smoke_threshold = 0.5
+                smoke_class = 0
             
-            if smoke_prob > no_smoke_prob:
-                smoke_result = 'Smoke'
-                smoke_confidence = smoke_prob * 100
+            print(f"💨 Raw smoke model output: {smoke_pred:.4f}")
+            
+            # Interpret prediction based on which class is smoke
+            if smoke_class == 0:
+                # Smoke is class 0
+                # Model outputs probability of class 1 (no smoke)
+                # So if output < threshold, predict Smoke (class 0)
+                if smoke_pred < smoke_threshold:
+                    smoke_result = 'Smoke'
+                    smoke_confidence = (1 - smoke_pred) * 100  # Confidence in Smoke (class 0)
+                else:
+                    smoke_result = 'No Smoke'
+                    smoke_confidence = smoke_pred * 100  # Confidence in No Smoke (class 1)
             else:
-                smoke_result = 'No Smoke'
-                smoke_confidence = no_smoke_prob * 100
+                # Smoke is class 1
+                # Model outputs probability of class 1 (smoke)
+                # So if output > threshold, predict Smoke (class 1)
+                if smoke_pred > smoke_threshold:
+                    smoke_result = 'Smoke'
+                    smoke_confidence = smoke_pred * 100  # Confidence in Smoke (class 1)
+                else:
+                    smoke_result = 'No Smoke'
+                    smoke_confidence = (1 - smoke_pred) * 100  # Confidence in No Smoke (class 0)
             
-            print(f"💨 Smoke Detection: {smoke_result} ({smoke_confidence:.2f}%)")
+            print(f"💨 Smoke Detection: {smoke_result} (Confidence: {smoke_confidence:.2f}%)")
             
             # ============================================================================
             # DETERMINE STATUS AND ALARM LEVEL

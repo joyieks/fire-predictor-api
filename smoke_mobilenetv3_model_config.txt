@@ -1,0 +1,6 @@
+threshold=0.5249999999999999
+smoke_class=1
+preprocessing=rescale_255
+input_size=224
+smoke_recall=0.8228
+smoke_precision=0.8442
